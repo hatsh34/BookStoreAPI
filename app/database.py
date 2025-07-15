@@ -1,18 +1,19 @@
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient
-from pymongo.database import Database
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 # Load .env variables
 load_dotenv()
-
 # Access MongoDB connection string from environment
 MONGO_DETAILS = os.environ.get("MONGO_DETAILS")
 
-client = MongoClient(MONGO_DETAILS)
+#Async client to connect to MongoDB instance.
 
-# Connect to your specific DB
-db = client.bookstoredb
+client = AsyncIOMotorClient(MONGO_DETAILS)
 
-def get_database() -> Database:
+#Motor uses dictionary-style access for databases.
+db: AsyncIOMotorDatabase = client.bookstoredb
+
+def get_database() -> AsyncIOMotorDatabase: 
     return db
+    

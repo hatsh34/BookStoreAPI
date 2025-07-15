@@ -1,50 +1,60 @@
-from pymongo.database import Database
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from . import models
 
-#Author CRUD Functions
+# --- Author CRUD Functions ---
+async def create_author(db: AsyncIOMotorDatabase, author: models.AuthorCreate):
+    author_dict = author.model_dump()  # Converts the Pydantic model to a dictionary to store in MongoDB.
+    result = await db.authors.insert_one(author_dict)
+    return await db.authors.find_one({"_id": result.inserted_id})  # Returns the newly created document by finding its insertedID 
 
-def create_author(db: Database, author: models.AuthorCreate):
-    author_dict = author.model_dump()
-    result = db.authors.insert_one(author_dict)
-    return db.authors.find_one({"_id": result.inserted_id})
+async def get_author_by_email(db: AsyncIOMotorDatabase, email: str):
+    return await db.authors.find_one({"email": email})
 
-def get_author_by_email(db: Database, email: str):
-    return db.authors.find_one({"email": email})
-
-def get_author(db: Database, author_id: str):
+async def get_author(db: AsyncIOMotorDatabase, author_id: str):
     try:
         obj_id = ObjectId(author_id)
-        return db.authors.find_one({"_id": obj_id})
+        return await db.authors.find_one({"_id": obj_id})
     except Exception:
         return None
 
-def list_authors(db: Database):
-    return list(db.authors.find())
+async def list_authors(db: AsyncIOMotorDatabase):
+    # .find() returns a cursor, which we must iterate over asynchronously
+    return await db.authors.find().to_list(length=100)
 
-def delete_author(db: Database, author_id: str):
+async def delete_author(db: AsyncIOMotorDatabase, author_id: str):
     try:
         obj_id = ObjectId(author_id)
-        # Delete author
-        delete_result = db.authors.delete_one({"_id": obj_id})
+        # Delete the author
+        delete_result = await db.authors.delete_one({"_id": obj_id})
         if delete_result.deleted_count > 0:
             # Also delete all books by this author
-            db.books.delete_many({"author_id": author_id})
+            await db.books.delete_many({"author_id": author_id})
             return True
         return False
     except Exception:
         return False
 
-#Book CRUD Functions
+# --- Book CRUD Functions ---
 
-def create_book(db: Database, author_id: str, book: models.BookCreate):
+async def create_book(db: AsyncIOMotorDatabase, author_id: str, book: models.BookCreate):
     book_dict = book.model_dump()
     book_dict["author_id"] = author_id
-    result = db.books.insert_one(book_dict)
-    return db.books.find_one({"_id": result.inserted_id})
+    result = await db.books.insert_one(book_dict)
+    return await db.books.find_one({"_id": result.inserted_id})
 
-def list_all_books(db: Database):
-    return list(db.books.find())
+async def get_book(db: AsyncIOMotorDatabase, book_id: str):
+    try:
+        obj_id = ObjectId(book_id)
+        return await db.books.find_one({"_id": obj_id})
+    except Exception:
+        return None
 
-def get_books_by_author(db: Database, author_id: str):
-    return list(db.books.find({"author_id": author_id}))
+async def list_books_by_author(db: AsyncIOMotorDatabase, author_id: str):
+    return await db.books.find({"author_id": author_id}).to_list(length=100)
+
+
+async def list_all_books(db: AsyncIOMotorDatabase):
+    """Lists all books in the database."""
+    return await db.books.find().to_list(length=100)

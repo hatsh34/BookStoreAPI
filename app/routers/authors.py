@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pymongo.database import Database
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import List
 
 from .. import crud, models
@@ -11,30 +11,36 @@ router = APIRouter(
 )
 
 @router.post("/", response_model=models.AuthorInDB, status_code=status.HTTP_201_CREATED)
-def create_author(author: models.AuthorCreate, db: Database = Depends(get_database)):
-    if crud.get_author_by_email(db, email=author.email):
+async def create_author(author: models.AuthorCreate, db: AsyncIOMotorDatabase = Depends(get_database)):
+    if await crud.get_author_by_email(db, email=author.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Author with email '{author.email}' already exists."
         )
-    created_author = crud.create_author(db, author=author)
-    if created_author:
-        return created_author
+    created_author_doc = await crud.create_author(db, author=author)
+    if created_author_doc:
+        # --- THIS IS THE FIX ---
+        # Instead of returning the raw dictionary, we create an instance
+        # of our Pydantic model. This forces the alias (_id -> id) to be applied.
+        return models.AuthorInDB.model_validate(created_author_doc)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create author.")
 
 @router.get("/", response_model=List[models.AuthorInDB])
-def get_all_authors(db: Database = Depends(get_database)):
-    return crud.list_authors(db)
+async def get_all_authors(db: AsyncIOMotorDatabase = Depends(get_database)):
+    # This endpoint was likely correct, but it's good practice to ensure
+    # every item is validated before returning.
+    authors_list = await crud.list_authors(db)
+    return [models.AuthorInDB.model_validate(author) for author in authors_list]
 
 @router.get("/{author_id}", response_model=models.AuthorInDB)
-def get_single_author(author_id: str, db: Database = Depends(get_database)):
-    author = crud.get_author(db, author_id)
+async def get_single_author(author_id: str, db: AsyncIOMotorDatabase = Depends(get_database)):  
+    author = await crud.get_author(db, author_id)
     if author:
-        return author
+        return models.AuthorInDB.model_validate(author)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author with ID '{author_id}' not found.")
 
 @router.delete("/{author_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_single_author(author_id: str, db: Database = Depends(get_database)):
-    if not crud.delete_author(db, author_id):
+async def delete_single_author(author_id: str, db: AsyncIOMotorDatabase = Depends(get_database)):
+    if not await crud.delete_author(db, author_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author with ID '{author_id}' not found.")
     return
